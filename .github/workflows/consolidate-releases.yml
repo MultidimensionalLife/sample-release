@@ -1,0 +1,77 @@
+name: Consolidate Releases
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  consolidate-releases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: MultidimensionalLife/sample-consolidated-release
+          token: ${{ secrets.TARGET_REPO_TOKEN }}
+          path: target
+
+      - name: Generate RELEASES.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: source
+        run: |
+          echo "# 📦 Release History — sample-release" > ../target/RELEASES.md
+          echo "" >> ../target/RELEASES.md
+          echo "This file is auto-generated. Do not edit manually." >> ../target/RELEASES.md
+          echo "" >> ../target/RELEASES.md
+
+          gh release list --limit 100 --json tagName,name,publishedAt,isPrerelease --jq 'sort_by(.publishedAt) | reverse | .[]' | while read -r release; do
+            tag=$(echo "$release" | jq -r '.tagName')
+            name=$(echo "$release" | jq -r '.name')
+            date=$(echo "$release" | jq -r '.publishedAt' | cut -dT -f1)
+            prerelease=$(echo "$release" | jq -r '.isPrerelease')
+
+            echo "---" >> ../target/RELEASES.md
+            echo "" >> ../target/RELEASES.md
+
+            if [ "$prerelease" = "true" ]; then
+              echo "## 🚧 $name (Pre-release)" >> ../target/RELEASES.md
+            else
+              echo "## $name" >> ../target/RELEASES.md
+            fi
+
+            echo "" >> ../target/RELEASES.md
+            echo "**Tag:** \`$tag\` | **Date:** $date" >> ../target/RELEASES.md
+            echo "" >> ../target/RELEASES.md
+
+            body=$(gh release view "$tag" --json body --jq '.body')
+            if [ -n "$body" ]; then
+              echo "$body" >> ../target/RELEASES.md
+            else
+              echo "_No release notes provided._" >> ../target/RELEASES.md
+            fi
+
+            echo "" >> ../target/RELEASES.md
+          done
+
+      - name: Commit and push RELEASES.md to target repo
+        working-directory: target
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add RELEASES.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs: update RELEASES.md from sample-release"
+            git push
+          fi
