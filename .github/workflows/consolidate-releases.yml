@@ -1,12 +1,9 @@
 name: Consolidate Releases
 
 on:
-  release:
-    types: [published]
   push:
     tags:
       - '*'
-  workflow_dispatch:
 
 jobs:
   consolidate-releases:
